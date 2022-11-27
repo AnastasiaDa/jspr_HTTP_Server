@@ -1,5 +1,9 @@
-import java.io.*;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.Socket;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -21,18 +25,17 @@ public class Connection implements Runnable {
                 final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 final var out = new BufferedOutputStream(socket.getOutputStream());
         ) {
-            // read only request line for simplicity
-            // must be in form GET /path HTTP/1.1
-            final var requestLine = in.readLine();
-            final var parts = requestLine.split(" ");
 
-            if (parts.length != 3) {
+            final var request = new Request(in);
+            System.out.println(request.getQueryParams());
+            System.out.println(request.getQueryParam("id"));
+
+            if (request.getParts().length != 3) {
                 // just close socket
                 return;
             }
 
-            final var path = parts[1];
-            if (!validPaths.contains(path)) {
+            if (!validPaths.contains(request.getPathWithoutQuery())) {
                 out.write((
                         "HTTP/1.1 404 Not Found\r\n" +
                                 "Content-Length: 0\r\n" +
@@ -43,11 +46,11 @@ public class Connection implements Runnable {
                 return;
             }
 
-            final var filePath = Path.of(".", "public", path);
+            final var filePath = Path.of(".", "public", request.getPathWithoutQuery());
             final var mimeType = Files.probeContentType(filePath);
 
             // special case for classic
-            if (path.equals("/classic.html")) {
+            if (request.getPathWithoutQuery().equals("/classic.html")) {
                 final var template = Files.readString(filePath);
                 final var content = template.replace(
                         "{time}",
@@ -75,7 +78,7 @@ public class Connection implements Runnable {
             ).getBytes());
             Files.copy(filePath, out);
             out.flush();
-        } catch (IOException e) {
+        } catch (IOException | URISyntaxException e) {
             e.printStackTrace();
         }
     }
